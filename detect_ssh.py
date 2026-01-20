@@ -72,7 +72,7 @@ def detect_failed_logins(file_path: str, threshold: int = 3, window_seconds: int
             while ip_events[ip] and (current_time - ip_events[ip][0]).total_seconds() > window_seconds:
                 ip_events[ip].popleft() 
             
-            # Check if the number of failed attempts exceeds the threshold (Only trigger ONCE per IP)
+            # Check if the number of failed attempts exceeds the threshold (Only trigger ONCE per IP to avoid duplicates)
             if len(ip_events[ip]) == threshold:
                 count = len(ip_events[ip])
                 severity_level = severity(count)

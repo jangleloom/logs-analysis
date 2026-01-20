@@ -61,7 +61,7 @@ def monitor_log_file(file_path: str, threshold: int = 3, window_seconds: int = 1
             line = f.readline()
             
             if not line:
-                # No new line, wait a bit
+                # No new line, wait a bit for new data
                 time.sleep(0.5)
                 continue
             
@@ -83,7 +83,7 @@ def monitor_log_file(file_path: str, threshold: int = 3, window_seconds: int = 1
             if len(ip_events[ip]) == threshold and ip not in alerted_ips:
                 severity_level = severity(len(ip_events[ip]))
                 
-                print(f"\n🚨 ALERT: Brute force detected!")
+                print(f"\nALERT: Brute force detected!")
                 print(f"IP: {ip}")
                 print(f"Failed attempts: {len(ip_events[ip])}")
                 print(f"Severity: {severity_level}")
@@ -93,8 +93,8 @@ def monitor_log_file(file_path: str, threshold: int = 3, window_seconds: int = 1
                 
                 alerted_ips.add(ip)
                 
-                # Optional: Reset alert after some time
-                # You could implement a mechanism to remove from alerted_ips after a cooldown
+                # Reset alert after some time if needed
+                # Could implement a mechanism to remove from alerted_ips after a cooldown
 
 if __name__ == "__main__":
     # Monitor the log file in real-time

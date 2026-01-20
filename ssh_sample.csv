@@ -1,0 +1,16 @@
+timestamp,host,program,pid,event_type,user,src_ip,src_port,auth_result,extra
+2026-01-12T11:20:01Z,lab-srv01,sshd,25539,auth_failed,invalid_user_admin,203.0.113.45,52683,failure,Failed password for invalid user admin
+2026-01-12T11:20:10Z,lab-srv01,sshd,25539,auth_failed,invalid_user_test,203.0.113.45,52684,failure,Failed password for invalid user test
+2026-01-12T11:20:20Z,lab-srv01,sshd,25539,auth_failed,root,203.0.113.45,52685,failure,Failed password for root
+2026-01-12T11:20:35Z,lab-srv01,sshd,25539,auth_failed,root,203.0.113.45,52686,failure,Failed password for root
+2026-01-12T11:20:55Z,lab-srv01,sshd,25539,auth_failed,root,203.0.113.45,52687,failure,Failed password for root
+2026-01-12T11:21:05Z,lab-srv01,sshd,25539,auth_success,root,203.0.113.45,52688,success,Accepted password for root
+2026-01-12T11:22:15Z,lab-srv01,sshd,26001,auth_failed,alice,198.51.100.23,41122,failure,Failed password for alice
+2026-01-12T11:23:05Z,lab-srv01,sshd,26001,auth_failed,alice,198.51.100.23,41123,failure,Failed password for alice
+2026-01-12T11:23:55Z,lab-srv01,sshd,26001,auth_failed,alice,198.51.100.23,41124,failure,Failed password for alice
+2026-01-12T11:24:15Z,lab-srv01,sshd,26001,auth_failed,alice,198.51.100.23,41125,failure,Failed password for alice
+2026-01-12T11:24:45Z,lab-srv01,sshd,26001,auth_failed,alice,198.51.100.23,41126,failure,Failed password for alice
+2026-01-12T11:25:05Z,lab-srv01,sshd,26001,auth_failed,alice,198.51.100.23,41127,failure,Failed password for alice
+2026-01-12T11:30:10Z,lab-srv01,sshd,27001,auth_failed,invalid_user_guest,45.77.23.91,60111,failure,Failed password for invalid user guest
+2026-01-12T11:30:25Z,lab-srv01,sshd,27001,auth_failed,invalid_user_guest,45.77.23.91,60112,failure,Failed password for invalid user guest
+2026-01-12T11:30:45Z,lab-srv01,sshd,27001,auth_failed,invalid_user_guest,45.77.23.91,60113,failure,Failed password for invalid user guest
