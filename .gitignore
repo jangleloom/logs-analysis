@@ -3,3 +3,9 @@ __pycache__/
 *.pyc
 .vscode/
 *.swp
+*.csv
+*.db
+output/
+data/generated/
+.claude/
+docs/CLAUDE.md

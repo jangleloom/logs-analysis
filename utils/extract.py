@@ -116,12 +116,12 @@ def convert_sudo_burst_alerts(alerts: List[Dict]) -> List[SecurityEvent]:
     return events
 
 def export_to_csv(events: List[SecurityEvent], output_file: str = 'security_events.csv'):
-    # Export to CSV for Power BI 
-    
+    # Export to CSV for Power BI
+
     fieldnames = [
         'timestamp', 'event_type', 'severity', 'source_ip',
         'username', 'secondary_user', 'command', 'threat_category',
-        'event_count', 'window_start', 'window_end'
+        'event_count', 'window_start', 'window_end', 'raw_log_line'
     ]
     
     with open(output_file, 'w', newline='', encoding='utf-8') as f:
@@ -304,17 +304,20 @@ def create_powerbi_view(db_file: str = 'security_events.db'):
 if __name__ == "__main__":
     # Main pipeline execution -- collect, normalize, and export security events
     # Import your detection modules
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
     from detect_ssh import detect_failed_logins
     from detect_sudo import detect_sus_command, detect_sudo_burst, parse_sudo_event
-    
+
     print("=== Security Event Export Pipeline ===\n")
-    
+
     # Collect all events from different sources
     all_events = []
-    
+
     # 1. SSH Brute Force Detection
     print("1. Analyzing SSH logs...")
-    ssh_alerts = detect_failed_logins("sample_auth.log", threshold=3, window_seconds=120)
+    ssh_alerts = detect_failed_logins("../data/generated/ssh_diverse_sample.log", threshold=3, window_seconds=120)
     ssh_events = convert_ssh_alerts(ssh_alerts)
     all_events.extend(ssh_events)
     print(f"   Found {len(ssh_events)} SSH brute force events")
@@ -322,36 +325,39 @@ if __name__ == "__main__":
     # 2. Sudo Command Detection
     print("2. Analyzing sudo logs...")
     sudo_events_raw = []
-    with open("sudo_sample.log") as f:
+    with open("../data/generated/sudo_diverse_sample.log") as f:
         for line in f:
             event = parse_sudo_event(line, 2026)
             if event:
                 sudo_events_raw.append(event)
-    
+
     # 2a. Suspicious commands
     sudo_cmd_alerts = detect_sus_command(sudo_events_raw)
     sudo_cmd_events = convert_sudo_command_alerts(sudo_cmd_alerts)
     all_events.extend(sudo_cmd_events)
     print(f"   Found {len(sudo_cmd_events)} suspicious sudo commands")
-    
+
     # 2b. Sudo bursts
-    sudo_burst_alerts = detect_sudo_burst("sudo_sample.log", threshold=3, window_seconds=120)
+    sudo_burst_alerts = detect_sudo_burst("../data/generated/sudo_diverse_sample.log", threshold=3, window_seconds=120)
     sudo_burst_events = convert_sudo_burst_alerts(sudo_burst_alerts)
     all_events.extend(sudo_burst_events)
     print(f"   Found {len(sudo_burst_events)} sudo burst events")
     
     # 3. Export to CSV
     print("\n3. Exporting data...")
-    export_to_csv(all_events, 'security_events.csv')
-    
+    export_to_csv(all_events, '../output/security_events.csv')
+
     # 4. Export to SQLite (you'll add this function next)
-    export_to_sqlite(all_events, 'security_events.db')
-    
+    export_to_sqlite(all_events, '../output/security_events.db')
+
     # 5. Create Power BI view (you'll add this function next)
-    create_powerbi_view('security_events.db')
+    create_powerbi_view('../output/security_events.db')
     
-    print(f"\n✓ Pipeline complete!")
+    print(f"\nPipeline complete!")
+    print(f"  Total SSH events: {len(ssh_events)}")
+    print(f"  Total sudo command events: {len(sudo_cmd_events)}")
+    print(f"  Total sudo burst events: {len(sudo_burst_events)}")
     print(f"  Total events: {len(all_events)}")
-    print(f"\n📊 Ready for Power BI:")
-    print(f"   - CSV: security_events.csv")
-    print(f"   - SQLite: security_events.db")
+    print(f"\nReady for Power BI:")
+    print(f"   - CSV: ../output/security_events.csv")
+    print(f"   - SQLite: ../output/security_events.db")
