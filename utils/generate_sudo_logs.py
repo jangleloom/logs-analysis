@@ -85,10 +85,34 @@ def generate_isolated_suspicious_commands(num_commands=600):
 
     return lines
 
+def generate_benign_sudo_activity(num_commands=150, start_time=None):
+    """Generate realistic benign sudo activity for a normal workday."""
+    if start_time is None:
+        start_time = datetime(2026, 8, 7, 0, 0, 0)
+
+    lines = []
+    current_time = start_time
+
+    # Spread commands throughout the day (24 hours)
+    # Most activity during business hours, less during off-hours
+    for _ in range(num_commands):
+        user = random.choice(USERS[:15])  # Use more common users
+        command = random.choice(BENIGN_COMMANDS)
+
+        # Add random time increment (average ~10 minutes between benign sudo commands)
+        # Range: 1 minute to 60 minutes
+        time_increment = random.randint(60, 3600)
+        current_time += timedelta(seconds=time_increment)
+
+        lines.append(generate_sudo_log_entry(current_time, user, command))
+
+    return lines
+
 def generate_sudo_logs(output_file='sudo_diverse_sample.log',
                        num_burst_users=20,
                        burst_size_range=(3, 10),
-                       num_isolated=400):
+                       num_isolated=400,
+                       num_benign=150):
     """
     Generate sudo logs with burst patterns and isolated suspicious commands.
 
@@ -97,16 +121,22 @@ def generate_sudo_logs(output_file='sudo_diverse_sample.log',
         num_burst_users: Number of users who perform burst activity
         burst_size_range: (min, max) commands per burst
         num_isolated: Number of isolated suspicious commands
+        num_benign: Number of benign sudo commands (realistic daily activity)
     """
 
     print(f"Generating sudo logs...")
+    print(f"  - Benign sudo commands: {num_benign}")
     print(f"  - Burst patterns: {num_burst_users} users")
     print(f"  - Isolated suspicious commands: {num_isolated}")
 
     lines = []
-    current_time = datetime(2026, 8, 7, 14, 15, 14)
+    current_time = datetime(2026, 8, 7, 0, 0, 0)  # Start at midnight
 
-    # Generate burst patterns
+    # Generate benign sudo activity (bulk of normal operations)
+    benign_lines = generate_benign_sudo_activity(num_benign, current_time)
+    lines.extend(benign_lines)
+
+    # Generate burst patterns (rare, suspicious)
     burst_users = random.sample(USERS, min(num_burst_users, len(USERS)))
 
     for user in burst_users:
@@ -117,7 +147,7 @@ def generate_sudo_logs(output_file='sudo_diverse_sample.log',
         # Move time forward significantly between different users' bursts
         current_time += timedelta(minutes=random.randint(5, 30))
 
-    # Generate isolated suspicious commands
+    # Generate isolated suspicious commands (very rare in real environments)
     isolated_lines = generate_isolated_suspicious_commands(num_isolated)
     lines.extend(isolated_lines)
 
@@ -143,6 +173,10 @@ def generate_sudo_logs(output_file='sudo_diverse_sample.log',
 
     print(f"\nGenerated {len(lines)} sudo log entries")
     print(f"Output: {output_file}")
+    print(f"\nBreakdown:")
+    print(f"  - Benign commands: {num_benign}")
+    print(f"  - Suspicious commands: ~{num_isolated + (num_burst_users * 3)}")
+    print(f"  - Total: {len(lines)}")
     print(f"\nExpected results when analyzed:")
     print(f"  - Sudo burst alerts: ~{num_burst_users} (threshold=3, window=120s)")
     print(f"  - Suspicious command alerts: ~{num_isolated + (num_burst_users * 3)} (approx)")
@@ -151,12 +185,19 @@ def generate_sudo_logs(output_file='sudo_diverse_sample.log',
         print(f"  {user}")
 
 if __name__ == "__main__":
-    # Generate logs with more burst patterns
+    # Generate realistic daily volumes for production Linux host
+    # Target: 20-200 total sudo commands/day
+    # Realistic breakdown:
+    #   - Benign: 150-180 commands (normal sysadmin work)
+    #   - Suspicious: 0-2 isolated commands (very rare)
+    #   - Bursts: 0-2 per day (extremely rare, usually indicates attack)
+
     generate_sudo_logs(
         output_file='sudo_diverse_sample.log',
-        num_burst_users=30,        # 30 users will have burst activity
-        burst_size_range=(5, 15),   # Each burst: 5-15 commands
-        num_isolated=500            # 500 isolated suspicious commands
+        num_benign=165,             # Normal daily operations
+        num_burst_users=1,          # 1 burst event (rare but realistic)
+        burst_size_range=(4, 8),    # Each burst: 4-8 commands
+        num_isolated=2              # 2 isolated suspicious commands (very rare)
     )
 
     print("\nYou can now use this file in extract.py:")
@@ -164,3 +205,4 @@ if __name__ == "__main__":
     print('      for line in f:')
     print('          event = parse_sudo_event(line, 2026)')
     print('  sudo_burst_alerts = detect_sudo_burst("sudo_diverse_sample.log", threshold=3, window_seconds=120)')
+    print("\nRealistic volumes: ~170-180 total sudo commands/day (production host)")

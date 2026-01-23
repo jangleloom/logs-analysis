@@ -114,12 +114,15 @@ def generate_ssh_logs(output_file='ssh_diverse_sample.log', num_attackers=50, st
         print(f"  {attacker['ip']}: {attacker['attempts']} attempts")
 
 if __name__ == "__main__":
-    # Generate logs with 200 different attacker IPs
+    # Generate realistic daily volumes for internet-facing host
+    # Target: 200-5000 failed SSH attempts per day
+    # Strategy: ~100-150 attackers, averaging 20-40 attempts each = ~2000-6000 total
     generate_ssh_logs(
         output_file='ssh_diverse_sample.log',
-        num_attackers=200,
-        start_date=datetime(2026, 1, 10, 12, 0, 0)
+        num_attackers=120,  # Realistic number of distinct attackers per day
+        start_date=datetime(2026, 1, 10, 0, 0, 0)  # Start at midnight for full day
     )
 
     print("\nYou can now use this file in extract.py:")
     print('  ssh_alerts = detect_failed_logins("ssh_diverse_sample.log", threshold=3, window_seconds=120)')
+    print("\nRealistic volumes: ~2000-3000 failed SSH attempts/day (internet-facing host)")
