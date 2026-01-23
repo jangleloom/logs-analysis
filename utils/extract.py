@@ -2,6 +2,13 @@ from datetime import datetime
 from typing import List, Optional, Dict
 import csv
 import sqlite3
+import sys
+import os
+
+# Add src directory to path for imports
+script_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(script_dir)
+sys.path.insert(0, os.path.join(project_root, 'src'))
 
 '''Functions and classes needed to extract and normalize security events from various log formats.:
 - SecurityEvent class to represent normalized events.
@@ -29,7 +36,12 @@ class SecurityEvent:
         event_count: int = 1,
         window_start: Optional[datetime] = None,
         window_end: Optional[datetime] = None,
-        raw_log_line: Optional[str] = None
+        raw_log_line: Optional[str] = None,
+        # Geolocation fields
+        country: Optional[str] = None,
+        city: Optional[str] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None
     ):
         # Initialize all attributes
         self.timestamp = timestamp
@@ -44,6 +56,11 @@ class SecurityEvent:
         self.window_start = window_start or timestamp
         self.window_end = window_end or timestamp
         self.raw_log_line = raw_log_line
+        # Geolocation
+        self.country = country
+        self.city = city
+        self.latitude = latitude
+        self.longitude = longitude
     
     def to_dict(self) -> Dict:
         # Convert the SecurityEvent to a dictionary for exporting
@@ -59,13 +76,50 @@ class SecurityEvent:
             'event_count': self.event_count,
             'window_start': self.window_start.isoformat(),
             'window_end': self.window_end.isoformat(),
-            'raw_log_line': self.raw_log_line
+            'raw_log_line': self.raw_log_line,
+            'country': self.country,
+            'city': self.city,
+            'latitude': self.latitude,
+            'longitude': self.longitude
         }
 
-def convert_ssh_alerts(alerts: List[Dict]) -> List[SecurityEvent]:
-    """Convert detect_ssh.py alerts to canonical format."""
+def get_ip_location(ip_address: str) -> Dict[str, any]:
+    """
+    Get geolocation data for an IP address using ip-api.com (free, no API key needed).
+    Returns dict with country, city, latitude, longitude.
+    """
+    if not ip_address:
+        return {'country': None, 'city': None, 'latitude': None, 'longitude': None}
+
+    try:
+        import requests
+        # Using ip-api.com free tier (45 requests/minute limit)
+        response = requests.get(f'http://ip-api.com/json/{ip_address}', timeout=2)
+
+        if response.status_code == 200:
+            data = response.json()
+            if data.get('status') == 'success':
+                return {
+                    'country': data.get('country'),
+                    'city': data.get('city'),
+                    'latitude': data.get('lat'),
+                    'longitude': data.get('lon')
+                }
+    except Exception as e:
+        print(f"Warning: Could not geolocate IP {ip_address}: {e}")
+
+    return {'country': None, 'city': None, 'latitude': None, 'longitude': None}
+
+def convert_ssh_alerts(alerts: List[Dict], enrich_geo=True) -> List[SecurityEvent]:
+    """Convert detect_ssh.py alerts to canonical format with optional geolocation."""
     events = []
-    for alert in alerts:
+    for i, alert in enumerate(alerts):
+        # Get geolocation data if enabled
+        geo_data = {}
+        if enrich_geo and alert.get('ip'):
+            print(f"  Geolocating IP {i+1}/{len(alerts)}: {alert['ip']}", end='\r')
+            geo_data = get_ip_location(alert['ip'])
+
         event = SecurityEvent(
             timestamp=alert['last_attempt'],
             event_type='ssh_failed_login',
@@ -75,9 +129,14 @@ def convert_ssh_alerts(alerts: List[Dict]) -> List[SecurityEvent]:
             event_count=alert['count'],
             window_start=alert['first_attempt'],
             window_end=alert['last_attempt'],
-            threat_category='Brute Force'
+            threat_category='Brute Force',
+            **geo_data  # Unpack country, city, latitude, longitude
         )
         events.append(event)
+
+    if enrich_geo:
+        print()  # New line after progress indicator
+
     return events
 
 
@@ -121,7 +180,8 @@ def export_to_csv(events: List[SecurityEvent], output_file: str = 'security_even
     fieldnames = [
         'timestamp', 'event_type', 'severity', 'source_ip',
         'username', 'secondary_user', 'command', 'threat_category',
-        'event_count', 'window_start', 'window_end', 'raw_log_line'
+        'event_count', 'window_start', 'window_end', 'raw_log_line',
+        'country', 'city', 'latitude', 'longitude'
     ]
     
     with open(output_file, 'w', newline='', encoding='utf-8') as f:
@@ -181,7 +241,11 @@ def export_to_sqlite(events: List[SecurityEvent], db_file: str = 'security_event
             event_count INTEGER DEFAULT 1,
             window_start TIMESTAMP,
             window_end TIMESTAMP,
-            raw_log_line TEXT
+            raw_log_line TEXT,
+            country TEXT,
+            city TEXT,
+            latitude REAL,
+            longitude REAL
         )
     ''')
     
@@ -230,8 +294,8 @@ def export_to_sqlite(events: List[SecurityEvent], db_file: str = 'security_event
             INSERT INTO fact_security_events (
                 timestamp, event_type, severity, source_ip, username,
                 secondary_user, command, threat_category, event_count,
-                window_start, window_end
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                window_start, window_end, country, city, latitude, longitude
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             event.timestamp.isoformat(),
             event.event_type,
@@ -243,7 +307,11 @@ def export_to_sqlite(events: List[SecurityEvent], db_file: str = 'security_event
             event.threat_category,
             event.event_count,
             event.window_start.isoformat(),
-            event.window_end.isoformat()
+            event.window_end.isoformat(),
+            event.country,
+            event.city,
+            event.latitude,
+            event.longitude
         ))
     
     conn.commit()
@@ -257,8 +325,10 @@ def create_powerbi_view(db_file: str = 'security_events.db'):
     conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     
+    cursor.execute('DROP VIEW IF EXISTS vw_security_dashboard')
+
     cursor.execute('''
-        CREATE VIEW IF NOT EXISTS vw_security_dashboard AS
+        CREATE VIEW vw_security_dashboard AS
         SELECT
             f.event_id,
             f.timestamp,
@@ -276,19 +346,24 @@ def create_powerbi_view(db_file: str = 'security_events.db'):
             f.event_count,
             f.window_start,
             f.window_end,
+            -- Geolocation
+            f.country,
+            f.city,
+            f.latitude,
+            f.longitude,
             -- Time dimensions for Power BI
             strftime('%Y-%m-%d', f.timestamp) as date,
             strftime('%H', f.timestamp) as hour,
             strftime('%w', f.timestamp) as day_of_week,
-            CASE 
-                WHEN CAST(strftime('%w', f.timestamp) AS INTEGER) IN (0, 6) 
-                THEN 'Weekend' 
-                ELSE 'Weekday' 
+            CASE
+                WHEN CAST(strftime('%w', f.timestamp) AS INTEGER) IN (0, 6)
+                THEN 'Weekend'
+                ELSE 'Weekday'
             END as day_type,
-            CASE 
-                WHEN CAST(strftime('%H', f.timestamp) AS INTEGER) BETWEEN 9 AND 17 
-                THEN 'Business Hours' 
-                ELSE 'After Hours' 
+            CASE
+                WHEN CAST(strftime('%H', f.timestamp) AS INTEGER) BETWEEN 9 AND 17
+                THEN 'Business Hours'
+                ELSE 'After Hours'
             END as time_period
         FROM fact_security_events f
         LEFT JOIN dim_severity s ON f.severity = s.severity_name
@@ -303,10 +378,7 @@ def create_powerbi_view(db_file: str = 'security_events.db'):
 
 if __name__ == "__main__":
     # Main pipeline execution -- collect, normalize, and export security events
-    # Import your detection modules
-    import sys
-    import os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
+    # Import detection modules
     from detect_ssh import detect_failed_logins
     from detect_sudo import detect_sus_command, detect_sudo_burst, parse_sudo_event
 
@@ -317,7 +389,8 @@ if __name__ == "__main__":
 
     # 1. SSH Brute Force Detection
     print("1. Analyzing SSH logs...")
-    ssh_alerts = detect_failed_logins("../data/generated/ssh_diverse_sample.log", threshold=3, window_seconds=120)
+    ssh_log_path = os.path.join(project_root, "data", "generated", "ssh_diverse_sample.log")
+    ssh_alerts = detect_failed_logins(ssh_log_path, threshold=3, window_seconds=120)
     ssh_events = convert_ssh_alerts(ssh_alerts)
     all_events.extend(ssh_events)
     print(f"   Found {len(ssh_events)} SSH brute force events")
@@ -325,7 +398,8 @@ if __name__ == "__main__":
     # 2. Sudo Command Detection
     print("2. Analyzing sudo logs...")
     sudo_events_raw = []
-    with open("../data/generated/sudo_diverse_sample.log") as f:
+    sudo_log_path = os.path.join(project_root, "data", "generated", "sudo_diverse_sample.log")
+    with open(sudo_log_path) as f:
         for line in f:
             event = parse_sudo_event(line, 2026)
             if event:
@@ -338,20 +412,22 @@ if __name__ == "__main__":
     print(f"   Found {len(sudo_cmd_events)} suspicious sudo commands")
 
     # 2b. Sudo bursts
-    sudo_burst_alerts = detect_sudo_burst("../data/generated/sudo_diverse_sample.log", threshold=3, window_seconds=120)
+    sudo_burst_alerts = detect_sudo_burst(sudo_log_path, threshold=3, window_seconds=120)
     sudo_burst_events = convert_sudo_burst_alerts(sudo_burst_alerts)
     all_events.extend(sudo_burst_events)
     print(f"   Found {len(sudo_burst_events)} sudo burst events")
-    
+
     # 3. Export to CSV
     print("\n3. Exporting data...")
-    export_to_csv(all_events, '../output/security_events.csv')
+    csv_output_path = os.path.join(project_root, "output", "security_events.csv")
+    export_to_csv(all_events, csv_output_path)
 
-    # 4. Export to SQLite (you'll add this function next)
-    export_to_sqlite(all_events, '../output/security_events.db')
+    # 4. Export to SQLite
+    db_output_path = os.path.join(project_root, "output", "security_events.db")
+    export_to_sqlite(all_events, db_output_path)
 
-    # 5. Create Power BI view (you'll add this function next)
-    create_powerbi_view('../output/security_events.db')
+    # 5. Create Power BI view
+    create_powerbi_view(db_output_path)
     
     print(f"\nPipeline complete!")
     print(f"  Total SSH events: {len(ssh_events)}")
@@ -359,5 +435,5 @@ if __name__ == "__main__":
     print(f"  Total sudo burst events: {len(sudo_burst_events)}")
     print(f"  Total events: {len(all_events)}")
     print(f"\nReady for Power BI:")
-    print(f"   - CSV: ../output/security_events.csv")
-    print(f"   - SQLite: ../output/security_events.db")
+    print(f"   - CSV: {csv_output_path}")
+    print(f"   - SQLite: {db_output_path}")
